@@ -1,0 +1,15 @@
+{
+  "id": "7f316663",
+  "conditions": [
+    {
+      "key": "size",
+      "compareType": "bigger",
+      "value": "0"
+    }
+  ],
+  "alias": "添加种子",
+  "type": "normal",
+  "code": "(torrent) => {\n  return false;\n}",
+  "client": "ff849309",
+  "used": false
+}

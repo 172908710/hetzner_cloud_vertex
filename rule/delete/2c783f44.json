@@ -1,0 +1,26 @@
+{
+  "id": "2c783f44",
+  "conditions": [
+    {
+      "key": "state",
+      "compareType": "includeIn",
+      "value": "stalledUP,uploading"
+    },
+    {
+      "key": "uploadSpeed",
+      "compareType": "smaller",
+      "value": "512*1024"
+    },
+    {
+      "key": "completedTime",
+      "compareType": "bigger",
+      "value": "10*60*60"
+    }
+  ],
+  "alias": "VIP规则：低速占坑清理",
+  "type": "javascript",
+  "priority": 0,
+  "code": "// 【VIP规则：低速占坑清理】（替代原智能慢车清理）\n(maindata, torrent) => {\n  const categoryList = [\"不删\", \"keep\"];\n  const { state, upspeed, category } = torrent.originProp;\n  \n  if (categoryList.indexOf(category) !== -1 || torrent.leecher >= 100) {\n    return false;\n  }\n  \n  // 保护期：凌晨不删，或者当前处于抢种初期的总下载任务较少（15个以内）时不删\n  if (\n    (moment().hour() >= 0 && moment().hour() <= 7) ||\n    maindata.leechingCount <= 15\n  ) {\n    return false;\n  }\n  \n  // 执行：处于下载阶段，且添加超过 15 分钟（900秒，给足时间去连接吸血鬼），如果上传速度依然死皮赖脸低于 500KB/s，处决。\n  // （阈值 500KiB 可根据你的刷流机器和宽带自行判断去调高或调低）\n  if (\n    (state === \"downloading\" || state === \"forcedDL\" || state === \"stalledDL\" || state === \"allocating\") &&\n    upspeed <= util.calSize(500, \"KiB\") &&\n    moment().unix() - torrent.addedTime >= 900\n  ) {\n    return true; \n  }\n  \n  return false;\n};\n",
+  "used": true,
+  "deleteNum": "100"
+}

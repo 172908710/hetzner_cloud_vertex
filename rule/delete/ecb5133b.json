@@ -1,0 +1,16 @@
+{
+  "id": "ecb5133b",
+  "conditions": [
+    {
+      "key": "ratio3",
+      "compareType": "bigger",
+      "value": "3"
+    }
+  ],
+  "alias": "VIP规则：死种、断流及异常清理",
+  "type": "javascript",
+  "priority": 0,
+  "code": "// 【VIP规则：死种、断流及异常清理】\n(maindata, torrent) => {\n  const categoryList = [\"不删\", \"keep\"];\n  const errorStates = [\"error\", \"missingFiles\", \"unknown\"]; \n  \n  const { state, upspeed, progress, category, addedTime } = torrent.originProp;\n  \n  // 1. 保留指定分类\n  if (categoryList.indexOf(category) !== -1) return false;\n\n  // 2. 保护机制：如果当前上传速度大于一定的阈值，则直接保留（不删）\n  // 这里的 10240 意思是 10 KB/s。如果你只要“有上传就不删”，可以改成 upspeed > 0\n  const minUploadSpeedToKeep = 10 * 1024; // 10 KB/s\n  if (upspeed > minUploadSpeedToKeep) {\n    return false;\n  }\n\n  // 3. 异常状态清理（走到这里说明上传速度不可观，且处于异常状态）\n  if (errorStates.indexOf(state) !== -1) return true;\n  \n  // 4. 进度不足5%，等了2小时还没动静，没救了，删。 (原本是4小时，VIP没必要等)\n  if (state === \"stalledDL\" && progress <= 0.05 && (moment().unix() - addedTime >= 7200)) {\n    return true; \n  }\n  \n  // 5. 进度超过5%，但断流卡住超过1小时，且毫无上传，占位，删。 (原本是2小时，VIP缩短)\n  if (state === \"stalledDL\" && upspeed <= 0 && progress >= 0.05 && (moment().unix() - addedTime >= 3600)) {\n    return true; \n  }\n  \n  return false;\n};\n",
+  "used": true,
+  "deleteNum": "100"
+}

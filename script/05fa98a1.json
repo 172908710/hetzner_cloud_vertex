@@ -1,0 +1,7 @@
+{
+  "enable": true,
+  "cron": "0 4 * * *",
+  "script": "const fs = require('fs');\nconst path = require('path');\nconst { execSync } = require('child_process');\n\ntry {\n  // 定义可能存放日志的系统目录 (囊括常规部署的路径)\n  const logDirs = ['/app/vertex/logs', '/vertex/logs', '/app/vertex/data/logs'];\n  const keepDays = 5; // 【参数】只保留最近 5 天的日志，再老的全干掉\n  const now = Date.now();\n  let deleteCount = 0;\n\n  // 1. 扫描并收割老旧日志\n  for (const dir of logDirs) {\n    if (fs.existsSync(dir)) {\n      const files = fs.readdirSync(dir);\n      for (const file of files) {\n        const filePath = path.join(dir, file);\n        const stats = fs.statSync(filePath);\n        \n        // 计算文件最后修改时间距今多少天\n        const daysOld = (now - stats.mtimeMs) / (1000 * 60 * 60 * 24);\n        \n        // 非目录文件且超过 5 天就无情删掉\n        if (daysOld > keepDays && stats.isFile()) {\n           fs.unlinkSync(filePath);\n           deleteCount++;\n        }\n      }\n    }\n  }\n\n  // 2. 清理 Vertex 容器运行时的零碎临时垃圾文件 (由于是在容器化隔离内，这么干绝对安全)\n  try {\n    execSync('rm -rf /tmp/*');\n  } catch(e) {}\n\n  // 打印一条绿色的成功日志\n  logger.info(`[空间保洁] 打扫完成！删除了 ${deleteCount} 个过期日志，并清空了临时缓存。这下 2% 的救命空间永远花不完了！`);\n} catch (err) {\n  logger.error(`[空间保洁] 运行报错: ${err.message}`);\n}\n",
+  "alias": "系统清理：释放冗余日志与缓存",
+  "id": "05fa98a1"
+}

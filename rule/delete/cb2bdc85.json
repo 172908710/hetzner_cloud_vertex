@@ -1,0 +1,16 @@
+{
+  "id": "cb2bdc85",
+  "conditions": [
+    {
+      "key": "",
+      "compareType": "",
+      "value": ""
+    }
+  ],
+  "alias": "VIP规则：空间告急清理",
+  "type": "javascript",
+  "priority": 0,
+  "code": "// 【空间告急清理】剩余空间小于硬盘总容量10%时，无论进度状态，删除上传速度最低（速度相同时删体积最大）的种子\n(maindata, torrent) => {\n  const categoryList = [\"不删\", \"keep\", \"养老\"];\n  const { category } = torrent.originProp;\n  \n  // 1. 最基础的过滤：保留特定分类（已取消进度必须100%的限制）\n  if (categoryList.indexOf(category) !== -1) return false;\n  \n  // 2. 获取 qBittorrent 服务器真实的剩余空间（freeSpace）和总容量（totalSpace）\n  // 注意：并非所有下载器 API 都会准确返回 server_state 对象或者总容量信息，qbittorrent 通常包含\n  const serverState = maindata.serverState || maindata.server_state || {};\n  \n  const freeSpace = serverState.free_space_on_disk !== undefined \n    ? serverState.free_space_on_disk \n    : maindata.freeSpaceOnDisk;\n\n  // QBT API 并非默认直接暴露总空间，这里用所有下载目录所在盘符的总空间来替代，\n  // 我们通过 qBittorrent 状态中获取的总物理硬盘大小。\n  // 如果 API 没返回总容量，为了安全起见，我们只能假设一个默认触发值(比如90G)防止误删。\n  const totalSpace = serverState.total_space_on_disk !== undefined \n    ? serverState.total_space_on_disk \n    : null;\n\n  if (!freeSpace) return false;\n  \n  // 3. 核心计算：检查剩余空间是否小于总容量的 10%\n  // 如果无法获取到 totalSpace (比如使用了古老版本的下载器)，为了防灾保险起见，默认退回到当剩余空间不到 100GB 时触发。\n  let isSpaceLow = false;\n  \n  if (totalSpace) {\n      // 真实硬盘大小的 10%\n      const threshold = totalSpace * 0.1;\n      isSpaceLow = (freeSpace < threshold);\n  } else {\n      // 备用触发方案 (Fallback)\n      isSpaceLow = (freeSpace < util.calSize(100, \"GiB\"));\n  }\n\n  // 如果空间很安全，直接跳过不删\n  if (!isSpaceLow) {\n    return false; \n  }\n\n  // 4. 空间不足！开始在所有种子中“选妃”，挑出一个速度最低的\n  const allTorrents = maindata.torrents || {};\n  let targetHash = null;\n  let minSpeed = Infinity;\n  let maxSize = -1;\n\n  // 使用 for...in 遍历避免 Vertex OOM 爆内存\n  for (const hash in allTorrents) {\n    const t = allTorrents[hash];\n    \n    // 取出的属性可能为空，给个默认值\n    const tCategory = t.category || \"\";\n    \n    // 只挑选不在保留分类里的种子做比较，不关心它是否下载完毕\n    if (categoryList.indexOf(tCategory) !== -1) {\n      continue;\n    }\n    \n    const speed = t.upspeed || 0;\n    const size = t.size || 0;\n\n    // 核心规则：上传速度更低，或者速度同样低但体积更大\n    if (speed < minSpeed || (speed === minSpeed && size > maxSize)) {\n      minSpeed = speed;\n      maxSize = size;\n      targetHash = hash;\n    }\n  }\n\n  // 5. 判断当前被 Vertex 评估的这颗种子，是不是刚刚挑出来的“天选之子”\n  if (targetHash && torrent.hash && torrent.hash.toLowerCase() === targetHash.toLowerCase()) {\n    return true; // 是的话就果断开绿灯，执行删除！\n  }\n  \n  return false;\n};\n",
+  "deleteNum": "100",
+  "used": true
+}
