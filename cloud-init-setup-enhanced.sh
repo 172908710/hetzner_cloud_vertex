@@ -514,12 +514,19 @@ chmod +x /root/Install_archived.sh /root/NC_QB438_archived.sh
 
 
 # ============================================================
-# 全局变量
+# 全局变量（使用前请修改以下配置）
 # ============================================================
+# qBittorrent 用户名和密码
 USER="admin"
 PASSWORD="adminadmin"
+# qBittorrent WebUI 端口和 BT 端口
 PORT=8080
 UP_PORT=23333
+# Vertex 备份恢复（可选，留空则跳过）
+# 部署时填入私有仓库 URL 和 GitHub Token（不要提交到公开仓库）
+VERTEX_BACKUP_URL=""      # 如：https://raw.githubusercontent.com/<用户>/<仓库>/main/Vertex-backups.tar.gz
+GITHUB_TOKEN=""           # GitHub Personal Access Token（repo 权限）
+
 QB_CONF="/home/${USER}/.config/qBittorrent/qBittorrent.conf"
 
 # ============================================================
@@ -644,12 +651,12 @@ if [ -f /root/.boot-script.sh ]; then
 fi
 
 # ============================================================
-# [4/6] 强化系统储备池：5% 安全冗余隔离分配
+# [4/6] 强化系统储备池：1% 安全冗余隔离分配
 # ============================================================
-echo "=== [4/6] 强化系统储备池：5% 安全冗余隔离分配 ==="
+echo "=== [4/6] 强化系统储备池：1% 安全冗余隔离分配 ==="
 ROOT_DEV=$(df -h / | awk 'NR==2 {print $1}')
-tune2fs -m 5 "$ROOT_DEV"
-echo "  -> 已将 ${ROOT_DEV} 预留块设置为 5%"
+tune2fs -m 1 "$ROOT_DEV"
+echo "  -> 已将 ${ROOT_DEV} 预留块设置为 1%"
 
 # ============================================================
 # [5/6] Vertex Docker Host 网络穿透重建
@@ -659,15 +666,31 @@ echo "  -> 停止并移除旧 Vertex 容器..."
 docker stop vertex 2>/dev/null || true
 docker rm -f vertex 2>/dev/null || true
 
+# 恢复 Vertex 备份（可选）
+if [ -n "$VERTEX_BACKUP_URL" ] && [ -n "$GITHUB_TOKEN" ]; then
+    VERTEX_BACKUP="/root/Vertex-backups.tar.gz"
+    echo "  -> 下载 Vertex 备份文件..."
+    if wget --header="Authorization: token $GITHUB_TOKEN" -O "$VERTEX_BACKUP" "$VERTEX_BACKUP_URL"; then
+        tar -xzf "$VERTEX_BACKUP" -C /root/
+        rm -f "$VERTEX_BACKUP"
+        echo "  -> Vertex 备份恢复完成"
+    else
+        echo "  !! 备份下载失败，将以默认配置启动"
+    fi
+else
+    echo "  -> 未配置备份恢复，将以默认配置启动"
+fi
+
 echo "  -> 以 host 网络模式重建 Vertex..."
 if docker run -d \
     --name vertex \
     --restart unless-stopped \
     --network host \
+    --privileged \
     -v /root/vertex:/vertex \
     -e TZ=Asia/Shanghai \
     lswl/vertex:stable; then
-    echo "  -> Vertex 重建成功 (host 网络模式)"
+    echo "  -> Vertex 重建成功 (host 网络模式 + privileged)"
 else
     echo "  !! Vertex 重建失败，请手动检查"
 fi
@@ -679,6 +702,18 @@ echo "=== [6/6] 收尾自启与重启清理 ==="
 systemctl enable qbittorrent-nox@${USER}
 systemctl start qbittorrent-nox@${USER}
 echo "  -> qBittorrent 服务已启用并启动"
+
+# 宿主机定时清理（容器内无法执行这些命令）
+echo "  -> 配置宿主机 crontab..."
+(crontab -l 2>/dev/null | grep -v 'apt clean\|journalctl.*vacuum\|system-cleanup\|fstrim'; cat <<'CRON_EOF'
+# 每天凌晨4点 SSD TRIM
+0 4 * * * /sbin/fstrim -av >> /var/log/fstrim.log 2>&1
+# 每周日凌晨3点清理系统缓存
+0 3 * * 0 apt clean && journalctl --vacuum-size=10M && truncate -s 0 /var/log/btmp
+CRON_EOF
+) | crontab -
+echo "  -> 宿主机 crontab 配置完成"
+
 
 # 验证服务状态
 sleep 2
