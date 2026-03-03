@@ -1,17 +1,16 @@
 (maindata, torrent) => {
   if (torrent.downloaded > 0 && torrent.uploaded / torrent.downloaded > 3 && torrent.uploadSpeed - 3 * torrent.downloadSpeed > 0) return true;
-
   if (maindata.freeSpaceOnDisk >= 4 * 1024 * 1024 * 1024) return false;
   if (torrent.state === 'stalledDL' && torrent.progress === 0) return false;
-
-  let min = Infinity, max = -1, maxHash = '', count = 0;
-  for (const t of maindata.torrents) {
-    if (t.state === 'stalledDL' && t.progress === 0) continue;
-    count++;
-    if (t.uploadSpeed < min) min = t.uploadSpeed;
-    if (t.uploadSpeed > max) { max = t.uploadSpeed; maxHash = t.hash;
-    }
-  }
-
-  return count > 1 && torrent.hash !== maxHash && torrent.uploadSpeed === min;
+  const active = maindata.torrents.filter(t => !(t.state === 'stalledDL' && t.progress === 0));
+  if (active.length <= 1) return true;
+  const max = active.reduce((a, b) => a.uploadSpeed >= b.uploadSpeed ? a : b);
+  if (torrent.hash === max.hash) return false;
+  const min = Math.min(...active.map(t => t.uploadSpeed));
+  if (torrent.uploadSpeed !== min) return false;
+  const target = active.filter(t => t.uploadSpeed === min && t.hash !== max.hash)
+    .sort((a, b) => (b.progress === 1) - (a.progress === 1) || b.uploaded - a.uploaded)[
+    0
+  ];
+  return torrent.hash === target.hash;
 }
