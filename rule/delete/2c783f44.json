@@ -1,5 +1,5 @@
 (maindata, torrent) => {
-  if (torrent.downloaded > 0 && torrent.uploaded / torrent.downloaded > 3 && torrent.uploadSpeed - 3 * torrent.downloadSpeed > 0) return true;
+  if (torrent.downloaded > 0 && torrent.uploaded / torrent.downloaded > 3 && torrent.uploadSpeed - 3 * torrent.downloadSpeed > 0 && (torrent.progress === 1 || torrent.downloadSpeed > 0)) return true;
   if (maindata.freeSpaceOnDisk >= 4 * 1024 * 1024 * 1024) return false;
   if (torrent.state === 'stalledDL' && torrent.progress === 0) return false;
   const active = maindata.torrents.filter(t => !(t.state === 'stalledDL' && t.progress === 0));
